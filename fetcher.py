@@ -13,12 +13,12 @@ def main(author, works):
 
     author_url = fetch_author_url(soup, author)
     if author_url:
-        r = requests.get(INDEX_URL + "/Browse/" + author_url) # http://classics.mit.edu/Browse/browse-[AUTHOR].html
-        soup = BeautifulSoup(r.text, 'html.parser')
+        r = requests.get(INDEX_URL + "/Browse/" + author_url) # change 'r' to: http://classics.mit.edu/Browse/browse-[AUTHOR].html
+        soup = BeautifulSoup(r.text, 'html.parser') # new soup of the specific authors page
 
-        # extract the author name that the website internally uses in its html:
-        author_html = author_url.split('-')[1].split('.')[0]
-        literature = fetch_literature_urls(soup, author_html)
+        # extract the author name that the website internally uses in its html links:
+        author = author_url.split('-')[1].split('.')[0]
+        bibliography = fetch_book_urls(soup, author, works)
     else:
         print("Author not found ...")
         return
@@ -28,17 +28,17 @@ def main(author, works):
     if not os.path.isdir(new_dir):
         os.mkdir(new_dir)
 
-    work_html_dict = fetch_works_htmls(literature, works)
-    for book_name in work_html_dict:
+    book_urls = book_link_dict(bibliography)
+    for book_name in book_urls:
         new_file = author + "/" + book_name + ".txt"
         if os.path.exists(os.path.join(current_dir, new_file)):
             print("'" + new_file + "'" + " already exists!")
             continue
 
-        r = requests.get(INDEX_URL + work_html_dict[book_name])
+        r = requests.get(INDEX_URL + book_urls[book_name])
         soup = BeautifulSoup(r.text, 'html.parser')
-        text_file = next(filter(lambda l: '.txt' in l['href'] and book_name in l['href'], soup.find_all('a',  href=True))).get('href')
-        r = requests.get(INDEX_URL + '/' + author_html + '/' + text_file)
+        text_file_url = next(filter(lambda l: '.txt' in l['href'] and book_name in l['href'], soup.find_all('a',  href=True))).get('href')
+        r = requests.get(INDEX_URL + '/' + author + '/' + text_file_url)
         with open(new_file, 'w') as f:
             f.write(r.text)
             print("'" + new_file + "'" + " created")
@@ -52,22 +52,21 @@ def fetch_author_url(soup, author):
             return link['href']
     return ""
 
-def fetch_literature_urls(soup, author_html):
-    match_string = '/' + author_html + '/'
-    works = filter(lambda l: match_string in l.get('href'), soup.find_all('a'))
-    return works
-
-def fetch_works_htmls(literature, demanded_works):
-    work_html_dict = {}
-    if len(demanded_works) > 0:
-        for link in literature:
-            name = link['href'].split('/')[2].split('.')[0].lower()
-            if name in demanded_works:
-                work_html_dict[name] = link['href']
+def fetch_book_urls(soup, author, demanded_works):
+    if demanded_works: # if specific books are demanded, fetch only those. Else fetch all books.
+        literature = filter(lambda l: l.get('href').split('/')[2].split('.')[0].lower() in demanded_works or l.text in demanded_works, 
+                            soup.find_all('a'))
+        return literature
     else:
-        for link in literature:
-            name = link['href'].split('/')[2].split('.')[0].lower()
-            work_html_dict[name] = link['href']
+        match_str = '/' + author + '/'
+        literature = filter(lambda l: match_str in l.get('href'), soup.find_all('a'))
+        return literature
+
+def book_link_dict(bibliography):
+    work_html_dict = {}
+    for link in bibliography:
+        book = link['href'].split('/')[2].split('.')[0].lower()
+        work_html_dict[book] = link['href']
 
     return work_html_dict
 
@@ -86,6 +85,6 @@ if __name__ == "__main__":
         if works:
             for i in range(0, len(works)):
                 works[i] = works[i].lower()
-        main(author, works)
+        main(author, set(works))
     else:
         print("Please provide an author name")
